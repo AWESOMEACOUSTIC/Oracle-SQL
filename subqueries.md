@@ -129,3 +129,59 @@ FROM Employees;
 
 ```
 
+### Single Row Subquery
+
+**What is it?**
+A single-row subquery is a query that returns exactly **one row** (or zero rows) to the outer query.
+
+**Wait, isn't that just a Scalar Subquery?**
+They are very closely related, but there is a subtle and powerful distinction in Oracle SQL:
+
+* A **Scalar Subquery** strictly returns 1 row *and* 1 column (a single isolated value, like just a salary).
+* A **Single-Row Subquery** strictly returns 1 row, but it can return **multiple columns** at once for that specific row.
+
+**Strategic Mapping (How to think about it):**
+Use this when your "Unknown Prerequisite" revolves around a single specific entity (like finding the specific traits of *one* employee, *one* department, or *one* exact date). Because it guarantees only one row is returned, you **must use single-row operators** (`=`, `>`, `<`, `>=`, `<=`, `<>`).
+
+**The Infamous Error (ORA-01427):**
+If you use a single-row operator (like `=`) but your inner query accidentally finds two rows (e.g., you searched by name, but there are two people named 'Alice' in the company), Oracle will immediately throw an error: `ORA-01427: single-row subquery returns more than one row`.
+
+#### Scenario A: Single Column, Single Row
+
+**The Logic:** "I need to find everyone who works in the exact same department as Alice. My unknown is Alice's department."
+**The Query:**
+
+```sql
+SELECT First_Name, Salary 
+FROM Employees 
+WHERE Dept_ID = (
+    -- This inner query returns 1 row and 1 column (Scalar/Single-Row)
+    SELECT Dept_ID 
+    FROM Employees 
+    WHERE First_Name = 'Alice'
+) 
+AND First_Name <> 'Alice'; -- (To exclude Alice herself from the results)
+
+```
+
+#### Scenario B: Multiple Columns, Single Row (Oracle Specific Power-Move)
+
+**The Logic:** "I need to find employees who have the *exact same* Salary AND Department as Eve." Instead of writing two separate subqueries (one for salary, one for department), Oracle lets you compare multiple columns simultaneously.
+**The Query:**
+
+```sql
+SELECT First_Name, Salary, Dept_ID
+FROM Employees
+WHERE (Salary, Dept_ID) = (
+    -- This inner query returns 1 row, but 2 columns
+    SELECT Salary, Dept_ID 
+    FROM Employees 
+    WHERE First_Name = 'Eve'
+)
+AND First_Name <> 'Eve';
+
+```
+
+*(Notice how the outer `WHERE` clause brackets `(Salary, Dept_ID)` match perfectly with the two columns returned by the inner `SELECT`).*
+
+Are you ready to type "next" to tackle **8. Multiple Row Subquery** (where we finally learn how to handle queries that return a whole list of results)?
