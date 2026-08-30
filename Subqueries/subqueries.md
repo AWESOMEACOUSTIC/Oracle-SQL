@@ -304,3 +304,48 @@ WHERE Salary > ALL (
 ```
 
 *(Sales salaries are 60k and 80k. The query will only return employees earning more than 80,000).*
+
+### Correlated Subqueries
+
+This is where SQL transitions from simple data retrieval into dynamic, row-by-row programming logic. Understanding this concept is a major milestone in mastering SQL.
+
+**What is it?**
+A correlated subquery is a subquery that **depends on the outer query** for its values. Unlike the independent subqueries we just covered (which run once, get a result, and hand it off), a correlated subquery executes repeatedly—once for *every single row* evaluated by the outer query.
+
+**Strategic Mapping (How to think about it):**
+Think of it exactly like a `FOR EACH` loop in programming.
+
+* *Independent Subquery thought:* "Find the company's maximum salary, then compare everyone to it." (Runs once).
+* *Correlated Subquery thought:* "Look at Employee A. Take their specific Department ID. Go find the average salary for *that specific* department. Compare Employee A's salary to it. Now move to Employee B and repeat the whole process." (Runs for every row).
+
+**The Golden Rule of Syntax:**
+To make a subquery correlated, the inner query **must reference a column from the outer query**. To do this without confusing the database, you *must* use table aliases (e.g., `e1`, `e2`).
+
+**Scenario:**
+Find all employees who earn more than the average salary of their *own* specific department.
+
+* *The Unknown:* The average salary isn't a single static number; it changes depending on which employee the outer query is currently looking at.
+
+**The Query:**
+
+```sql
+SELECT e1.First_Name, e1.Salary, e1.Dept_ID
+FROM Employees e1 -- (Outer query table aliased as e1)
+WHERE e1.Salary > (
+    -- Inner query calculates the average for the CURRENT row's department
+    SELECT AVG(e2.Salary) 
+    FROM Employees e2 
+    WHERE e2.Dept_ID = e1.Dept_ID -- THIS is the correlation!
+);
+
+```
+
+**Logical Breakdown (How the engine processes it):**
+
+1. **Row 1 (Alice):** The outer query looks at Alice (Salary: 90000, Dept: 10).
+2. **Inner Query Execution:** The inner query takes Alice's Dept 10 and runs: `SELECT AVG(Salary) FROM Employees WHERE Dept_ID = 10`. The result is 86,666.
+3. **Comparison:** Is Alice's 90,000 > 86,666? Yes. Alice is kept in the final results.
+4. **Row 2 (Bob):** The outer query moves to Bob (Salary: 60000, Dept: 20).
+5. **Inner Query Execution:** The inner query takes Bob's Dept 20 and runs: `SELECT AVG(Salary) FROM Employees WHERE Dept_ID = 20`. The result is 70,000.
+6. **Comparison:** Is Bob's 60,000 > 70,000? No. Bob is filtered out.
+7. *(This process repeats for every single employee).*
