@@ -184,4 +184,123 @@ AND First_Name <> 'Eve';
 
 *(Notice how the outer `WHERE` clause brackets `(Salary, Dept_ID)` match perfectly with the two columns returned by the inner `SELECT`).*
 
-Are you ready to type "next" to tackle **8. Multiple Row Subquery** (where we finally learn how to handle queries that return a whole list of results)?
+### Multiple Row Subquery
+
+**What is it?**
+A multiple-row subquery is exactly what it sounds like: a query that returns a list (one or more rows) back to the outer query.
+
+**Strategic Mapping (How to think about it):**
+Use this when your "Unknown Prerequisite" yields a *set of possibilities* rather than a single, isolated fact.
+
+* *Single-Row thought:* "What is the ID for the HR department?" (One answer).
+* *Multiple-Row thought:* "What are the IDs for all departments that currently have active employees?" (Many answers).
+
+**The Danger Zone (Why we need new operators):**
+If your inner query returns a list (e.g., `10, 20, 30`), you cannot logically ask SQL if a department ID *equals* `10, 20, 30`. An ID can only equal one thing at a time. If you try to use an `=` sign here, Oracle will throw the classic error we mentioned earlier: `ORA-01427: single-row subquery returns more than one row`.
+
+To fix this, you must abandon single-row operators (`=`, `>`, `<`) and upgrade to **Multiple-Row Operators**. The most common one is `IN`.
+
+**Scenario:**
+You need a list of employees, but only those who work in the 'Engineering' or 'Sales' departments.
+
+* *The Unknown:* You know the names of the departments, but the `Employees` table only stores the `Dept_ID`. You need to look up those IDs first.
+
+**The Query:**
+
+```sql
+SELECT First_Name, Salary, Dept_ID
+FROM Employees
+WHERE Dept_ID IN (
+    -- Inner query returns a list: 10, 20
+    SELECT Dept_ID 
+    FROM Departments 
+    WHERE Dept_Name IN ('Engineering', 'Sales')
+);
+
+```
+
+**Logical Breakdown:**
+
+1. SQL runs the inner query. It finds that Engineering is 10 and Sales is 20.
+2. The inner query essentially transforms into a list: `(10, 20)`.
+3. The outer query runs: `SELECT ... WHERE Dept_ID IN (10, 20);`
+
+### Usage of IN, NOT IN, ALL, ANY, and SOME
+
+When your subquery returns a list of values (a Multiple-Row Subquery), you must use these specific operators to bridge the outer query and the inner query.
+
+**Strategic Mapping (How to think about it):**
+Imagine your inner query returns a bucket of numbers: `[50000, 60000, 75000]`. How do you want to compare a specific employee's salary to that bucket?
+
+#### 1. IN and NOT IN
+
+* **`IN` Logic:** "Does my value exist anywhere inside this bucket?" (Equivalent to `= ANY`).
+* **`NOT IN` Logic:** "Is my value completely absent from this bucket?"
+
+**Scenario (NOT IN):** Find employees who do *not* work in the 'HR' or 'Marketing' departments.
+
+```sql
+SELECT First_Name, Dept_ID 
+FROM Employees 
+WHERE Dept_ID NOT IN (
+    SELECT Dept_ID 
+    FROM Departments 
+    WHERE Dept_Name IN ('HR', 'Marketing')
+);
+
+```
+
+> **The Deadly NULL Trap (Crucial for Interviews):**
+> If your subquery returns a list that contains even a single `NULL` value, a `NOT IN` condition will evaluate to FALSE for every row, returning zero results. Always ensure your inner query filters out NULLs (e.g., `WHERE column IS NOT NULL`) if you are using `NOT IN`.
+
+#### 2. ANY (and SOME)
+
+* **Logic:** "Is my condition true compared to *at least one* value in the bucket?"
+* **Note:** `SOME` is simply a grammatical synonym for `ANY` in Oracle. They do exactly the same thing.
+
+**Strategic Breakdown of `ANY`:**
+If your subquery returns salaries `[50000, 60000, 75000]`:
+
+* `> ANY` means "Greater than the lowest value." (If you are greater than 50000, you are greater than *any* of them).
+* `< ANY` means "Less than the highest value." (If you are less than 75000, you are less than *any* of them).
+
+**Scenario (`< ANY`):** Find employees whose salary is less than the maximum salary in the Engineering department (Dept 10), but exclude Engineering employees from the result.
+
+```sql
+SELECT First_Name, Salary 
+FROM Employees 
+WHERE Dept_ID <> 10
+AND Salary < ANY (
+    SELECT Salary 
+    FROM Employees 
+    WHERE Dept_ID = 10
+);
+
+```
+
+*(Engineering salaries are 90k, 75k, 95k. The query looks for non-engineers earning less than 95k).*
+
+#### 3. ALL
+
+* **Logic:** "Is my condition true compared to *every single* value in the bucket?"
+
+**Strategic Breakdown of `ALL`:**
+If your subquery returns salaries `[50000, 60000, 75000]`:
+
+* `> ALL` means "Greater than the highest value." (You must beat the top number to beat them *all*).
+* `< ALL` means "Less than the lowest value." (You must be under the bottom number to be less than them *all*).
+
+**Scenario (`> ALL`):** Find employees who earn more than *every single* employee in the Sales department (Dept 20).
+
+```sql
+SELECT First_Name, Salary 
+FROM Employees 
+WHERE Salary > ALL (
+    SELECT Salary 
+    FROM Employees 
+    WHERE Dept_ID = 20
+);
+
+```
+
+*(Sales salaries are 60k and 80k. The query will only return employees earning more than 80,000).*
