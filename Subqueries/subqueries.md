@@ -349,3 +349,93 @@ WHERE e1.Salary > (
 5. **Inner Query Execution:** The inner query takes Bob's Dept 20 and runs: `SELECT AVG(Salary) FROM Employees WHERE Dept_ID = 20`. The result is 70,000.
 6. **Comparison:** Is Bob's 60,000 > 70,000? No. Bob is filtered out.
 7. *(This process repeats for every single employee).*
+
+### Usage of EXISTS, NOT EXISTS
+
+The `EXISTS` and `NOT EXISTS` operators are almost always used in conjunction with correlated subqueries. They are considered some of the most powerful and highly optimized tools in an SQL developer's arsenal.
+
+**What is it?**
+Instead of returning actual data (like a list of IDs or a specific salary), `EXISTS` simply returns a boolean value: **TRUE or FALSE**. It checks whether the inner query returns *at least one row*.
+
+**Strategic Mapping (How to think about it):**
+Think of `EXISTS` as a radar sweep that is only looking for a "Yes" or "No".
+
+* *The `IN` thought process:* "Go get the IDs of every single person in the Engineering department, build a list of them, and then check if my current employee's ID is in that list."
+* *The `EXISTS` thought process:* "Knock on the door of the Engineering department. The moment anyone answers, report back TRUE and stop looking."
+
+**The Performance Superpower (Short-Circuiting):**
+Because `EXISTS` only cares *if* a row exists, the database engine stops searching the inner query the absolute millisecond it finds the first match. It doesn't waste time reading the rest of the table.
+
+**The `SELECT 1` Convention:**
+Because the outer query doesn't care *what* data the inner query finds—only *if* it finds something—it is a global best practice to write `SELECT 1` inside the `EXISTS` subquery instead of a column name.
+
+#### Scenario A: EXISTS
+
+**The Logic:** Find the details of all departments that currently have at least one employee earning more than 85,000.
+
+* *The Unknown:* Which departments meet this criteria?
+
+**The Query:**
+
+```sql
+SELECT Dept_Name 
+FROM Departments d
+WHERE EXISTS (
+    -- The radar sweep: Look at the current department 'd'. 
+    -- Does anyone here make > 85000?
+    SELECT 1 
+    FROM Employees e 
+    WHERE e.Dept_ID = d.Dept_ID  -- The correlation
+    AND e.Salary > 85000
+);
+
+```
+
+*(As soon as it finds Alice making 90,000 in Dept 10, it immediately marks Dept 10 as TRUE and stops checking the other engineers).*
+
+#### Scenario B: NOT EXISTS
+
+**The Logic:** Find the "orphan" records or empty categories. For example, find any department that currently has absolutely zero employees.
+
+* *The Unknown:* Which department IDs do not appear in the employee table?
+
+**The Query:**
+
+```sql
+SELECT Dept_Name 
+FROM Departments d
+WHERE NOT EXISTS (
+    SELECT 1 
+    FROM Employees e 
+    WHERE e.Dept_ID = d.Dept_ID
+);
+
+```
+
+*(In our setup data, this will return 'Marketing', because Dept_ID 40 does not exist anywhere in the Employees table).*
+
+### Why use EXISTS instead of IN?
+
+While you could solve the above scenarios using `IN` or `NOT IN`, `EXISTS` is safer and often faster. Remember the "Deadly NULL Trap" we discussed in step 9? `NOT IN` will fail completely if it encounters a `NULL` value in the subquery. `NOT EXISTS` is immune to the NULL trap, making it the industry standard for finding missing data between two tables.
+
+### Difference between Correlated & Non-Correlated Subquery
+
+You have already learned how to write both types, but taking a moment to clearly contrast them is crucial for both job interviews and deciding which one to use when you are staring at a blank screen.
+
+Here is the ultimate cheat sheet to distinguish between the two:
+
+| Feature | Non-Correlated Subquery | Correlated Subquery |
+| --- | --- | --- |
+| **Dependency** | **Independent:** The inner query can be highlighted, run on its own, and it will return a valid result. | **Dependent:** The inner query will throw an error if run on its own because it is missing data from the outer query. |
+| **Execution Frequency** | Executes exactly **once** before the main query starts. | Executes **repeatedly**—once for every single row the outer query evaluates. |
+| **Execution Order** | **Inner first, then Outer.** (Calculates the answer, hands it off). | **Outer first, then Inner.** (Picks a row, calculates the answer, repeats). |
+| **Performance** | Generally faster. The database can run it once, cache the result in memory, and reuse it instantly. | Can be slower on massive datasets due to the row-by-row looping, though modern SQL optimizers handle `EXISTS` very efficiently. |
+| **Syntax Marker** | Does not reference any tables from the outer query. | **Must** reference a column from the outer query (usually using table aliases like `e1.Dept_ID`). |
+
+**The Strategic Rule of Thumb:**
+
+* If your requirement sounds like it needs a **global or static metric** (e.g., "the company average," "the highest earner overall," "a specific ID list"), use a **Non-Correlated Subquery**.
+* If your requirement sounds like it needs a **dynamic, tailored metric** (e.g., "their *own* department's average," "has *any* matching records in another table"), use a **Correlated Subquery**.
+
+---
+
