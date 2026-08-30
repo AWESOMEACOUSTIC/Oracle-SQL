@@ -438,4 +438,3 @@ Here is the ultimate cheat sheet to distinguish between the two:
 * If your requirement sounds like it needs a **dynamic, tailored metric** (e.g., "their *own* department's average," "has *any* matching records in another table"), use a **Correlated Subquery**.
 
 ---
-
