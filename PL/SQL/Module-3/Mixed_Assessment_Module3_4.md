@@ -6,6 +6,13 @@ Same format as before: sample schema + seeded data, the PL/SQL solution, and the
 
 ## A1 — Delivery Vehicle Tracking Module
 
+> **Question:** A logistics company needs a reusable module for tracking delivery vehicles. Requirements:
+> - Register a new vehicle (`vehicle_id`, `capacity_kg`) into a `vehicles` table — reject registration if `capacity_kg` is zero or negative, with a clear error the calling fleet-management application can catch and display to a dispatcher.
+> - Given a `vehicle_id`, report its current utilization percentage (`current_load_kg / capacity_kg * 100`) — this will be used inside a live dashboard report that queries many vehicles at once.
+> - An internal calculation — determining whether a vehicle needs maintenance based on `total_distance_km` exceeding a threshold — should not be something other systems can call directly; it exists purely to support one of the above operations in a future extension.
+>
+> Design and write the appropriate PL/SQL object(s) for this. Justify your structural choices (procedure vs. function, public vs. private, standalone vs. grouped) in a few sentences before or after your code.
+
 ### Sample table
 ```sql
 CREATE TABLE vehicles (
@@ -96,6 +103,10 @@ ORA-20011: Vehicle 999 not found.
 
 ## A2 — One-Off "RUSH vs NORMAL" Order Report
 
+> **Question:** A retail company wants a **single, one-time analytical query** (not something that will ever be reused) that lists every order from the past 30 days alongside a computed label: `'RUSH'` if the order was placed and delivered within 24 hours, `'NORMAL'` otherwise. This is for a one-off meeting next week and will never be run again after that.
+>
+> Write the query, using whatever mechanism from this module best fits a genuinely one-off need like this. Briefly justify why you didn't create a permanent, reusable object instead.
+
 ### Sample table
 ```sql
 CREATE TABLE orders (
@@ -148,6 +159,10 @@ ORDER_ID  ORDER_DATE   DELIVERED_DATE        SPEED_LABEL
 
 ## A3 — Tax Jurisdiction Rate Lookup
 
+> **Question:** A finance team has a lookup: given a `tax_jurisdiction_code`, return the current tax rate. This is called extremely often (thousands of times per hour across many reports and transactions), and tax rates for any given jurisdiction rarely change — maybe once or twice a year.
+>
+> Design this as a PL/SQL function, applying any relevant performance techniques you've learned. Explain your reasoning for any techniques applied, and note one scenario where applying that same technique would have been a mistake.
+
 ### Sample table
 ```sql
 CREATE TABLE tax_rates (
@@ -198,6 +213,8 @@ ORA-20020: Unknown tax jurisdiction: XX-99
 
 ## B1 — Predict the Behavior (ZERO_DIVIDE vs NO_DATA_FOUND)
 
+> **Question:** Without running it, describe **exactly** what this block prints, line by line, and why:
+
 No custom table needed — the block queries `DUAL`, which always returns exactly one row, so `NO_DATA_FOUND` can never fire here regardless of the arithmetic.
 
 ### The block (as given)
@@ -229,6 +246,8 @@ D
 ---
 
 ## B2 — Package State Across Sessions
+
+> **Question:** Two sessions, Session X and Session Y, both connect and interact with this package (shown below). Session X calls `pkg_counter.bump;` five times, then calls `pkg_counter.current_value`. Session Y, a completely separate connection that has never touched this package before, then calls `pkg_counter.current_value` for the first time. What does each session see, and why?
 
 No table needed — this is entirely about where package variables live.
 
@@ -262,6 +281,8 @@ A package-level variable like `g_val` is **instantiated once per session**, not 
 ---
 
 ## B3 — UPDATE Matching Zero Rows
+
+> **Question:** Given the procedure below, it's called as `risky_update(99999, 500);` where `account_id = 99999` does not exist. Does this procedure raise `NO_DATA_FOUND`? What actually happens? Explain the underlying rule.
 
 ### Sample table
 ```sql
@@ -304,6 +325,8 @@ No exception is raised, and account 1001's balance is unchanged. `NO_DATA_FOUND`
 ---
 
 ## C1 — Debug: Function Returns Without a Value
+
+> **Question:** This function is supposed to classify a customer's order volume. It compiles, but fails at runtime for certain valid inputs. Identify the bug and fix it.
 
 ### Sample test (no table needed — pure function of its input)
 ```sql
@@ -359,6 +382,8 @@ LOW
 
 ## C2 — Debug: Illegal Overload-by-Mode-Only
 
+> **Question:** A developer wrote a package attempting to overload a validation routine (shown below). This fails to compile. Explain precisely why, and propose a corrected design that achieves something close to the developer's likely intent (validating either an incoming value or producing one).
+
 No table needed — this is purely a package-structure question.
 
 ### Why it fails
@@ -388,6 +413,8 @@ This gets close to the likely intent — one routine for checking an incoming va
 ---
 
 ## C3 — Debug: Invalid RAISE_APPLICATION_ERROR Number
+
+> **Question:** The procedure below raises an unexpected error the moment it's compiled/run, unrelated to the business logic itself. Identify the issue and fix it.
 
 ### Sample table
 ```sql
@@ -450,11 +477,36 @@ SELECT status FROM invoices WHERE invoice_id = 8002;  -- FINALIZED
 
 ## Section D — Judgment & Reasoning
 
-D1–D3 are prose/reasoning questions with no query or table to run — there's nothing to seed or execute. (D3, on default parameters and existing call sites, is worth answering carefully against your own call-site list once you get there — happy to review that reasoning directly when you share it, no sample data needed for it.)
+D1–D3 are prose/reasoning questions with no query or table to run — there's nothing to seed or execute.
+
+### D1
+> **Question:** A teammate says: *"I always just use `WHEN OTHERS THEN NULL;` at the end of every procedure — it guarantees nothing ever crashes, so it's the safest option."* Respond to this in 4–6 sentences, addressing both what's appealing about the idea and what's genuinely risky about it.
+
+### D2
+> **Question:** Explain, in your own words, the difference between what happens when a `SELECT INTO` matches zero rows versus what happens when an `UPDATE` matches zero rows. Why does this distinction matter when designing exception handling for a batch process?
+
+### D3
+> **Question:** A procedure `pkg_hr.terminate_employee` currently has this signature:
+> ```sql
+> PROCEDURE terminate_employee (p_emp_id IN NUMBER, p_termination_date IN DATE);
+> ```
+> The company now wants to add an optional reason code, `p_reason_code IN VARCHAR2 DEFAULT NULL`, **without breaking any of the ~30 existing call sites** across the codebase (a mix of positional and named notation calls). Is this safe? Under what conditions would it *not* be safe, and for which of the 30 call sites specifically?
+
+(D3, on default parameters and existing call sites, is worth answering carefully against your own call-site list once you get there — happy to review that reasoning directly when you share it, no sample data needed for it.)
 
 ---
 
 ## E1 — Subscription Renewal Module
+
+> **Question:** A subscription-based company has the following requirement:
+>
+> "We need a module to handle subscription renewals. When a subscription is renewed: look up the customer's current plan and its monthly price. Apply a loyalty discount based on how many consecutive months they've been subscribed (this calculation is a simple internal lookup, not something other systems need directly). Calculate the final renewal amount. Insert a renewal record. If the customer's account is marked as `'SUSPENDED'`, the renewal must be rejected outright with a clear, specific error distinguishable from other failure types — this needs to be understood by both our billing team's internal PL/SQL scripts and our external payment gateway integration, which expects a proper database error it can catch. If the customer doesn't exist at all, that's a separate, distinctly different situation that should also be clearly communicated. Under high load, this renewal process runs for thousands of customers nightly, and one customer's issue must never stop the batch from continuing to the next customer (assume the batch-looping mechanism itself is handled elsewhere — focus only on this individual renewal module's design)."
+>
+> **Your task:**
+> 1. Identify every distinct PL/SQL concept from Modules 3 and 4 that's relevant here (don't just list module topics — explain *where* in the requirement each one applies).
+> 2. Design the object(s) needed: what's public, what's private, procedure vs. function, and what exceptions (pre-defined and/or user-defined) are needed, with what distinct error codes if applicable.
+> 3. Write the full implementation (specification + body, or standalone objects, whichever your design calls for).
+> 4. In a short paragraph, explain how your design satisfies the "one customer's issue must never stop the batch" requirement — even though the looping mechanism itself is out of scope.
 
 ### Sample tables
 ```sql
