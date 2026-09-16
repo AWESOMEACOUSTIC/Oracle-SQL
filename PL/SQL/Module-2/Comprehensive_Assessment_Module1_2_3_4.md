@@ -6,6 +6,8 @@ For each scenario: a minimal sample schema + data, the PL/SQL solution, and the 
 
 ## Scenario 1 — Warehouse Restocking Alert System
 
+*"Our warehouse system needs a module to monitor stock levels. Given a product ID, determine its restock urgency: if current stock is at or below 10% of its maximum capacity, urgency is 'CRITICAL'; between 10% and 30%, 'LOW'; above 30%, 'OK'. This calculation is used constantly across many dashboards and rarely changes for a given product on any given day, since stock levels only update a handful of times daily via batch jobs, not in real time. Separately, we need a way to actually process a restock — given a product ID and a quantity received, increase the stock and reject the operation outright (with a clear, distinct error) if the received quantity is zero or negative. Products that don't exist at all should be handled distinctly from invalid quantities."*
+
 ### Sample table
 ```sql
 CREATE TABLE products (
@@ -114,6 +116,9 @@ ERROR: product 999 does not exist.
 
 ## Scenario 2 — Customer Support Ticket Routing
 
+*"Support tickets come in with a numeric category code (1 through 7, but new categories get added occasionally before our routing logic is updated). Route each ticket to a queue name based on its category. Any code we don't yet recognize must be routed to a 'GENERAL' queue rather than causing the routing script to fail — this needs to be safe against category codes we haven't seen yet, by design, not as an afterthought."*
+ 
+
 ### Sample table
 ```sql
 CREATE TABLE support_tickets (
@@ -166,6 +171,8 @@ Ticket 5 -> GENERAL
 ---
 
 ## Scenario 3 — Payroll Batch Run With Mixed Outcomes
+
+*"Process employee IDs 3000 through 3050 for this month's payroll run (assume `employees(employee_id, base_salary, department_id, employment_status)`). For each: if `employment_status` is not 'ACTIVE', skip them entirely with a log note — this is a normal, expected situation, not an error. For active employees, calculate a department bonus: department 10 (Sales) gets 8%, department 20 (Engineering) gets 5%, all others get 2%. If an employee ID in that range doesn't exist in the table at all, that's a genuine data problem distinct from 'not active,' and should be logged differently. The batch must complete for all valid employees even if some IDs are problematic."*
 
 ### Sample table
 ```sql
@@ -239,6 +246,8 @@ DATA ERROR: 3050 does not exist.
 
 ## Scenario 4 — Multi-Currency Order Total (One-Off Executive Report)
 
+*"For a one-time board presentation next week, we need a report listing every order from Q3 with its total converted to USD, using a simple internal calculation involving each order's currency code. This is genuinely a one-off — after this presentation, this exact calculation will likely never be needed again in this form. We don't want to leave a permanent function cluttering the schema for something this disposable."*
+
 ### Sample table
 ```sql
 CREATE TABLE orders (
@@ -296,6 +305,8 @@ Order 5004 (INR): $900
 ---
 
 ## Scenario 5 — Membership Renewal Engine
+
+*"Design our membership renewal module: given a member ID, determine their renewal price using their membership level (lookup logic that's purely an internal implementation detail, not something other systems should call directly) and process the actual renewal (updating their expiry date and inserting a renewal record). If a member's account is flagged 'DELINQUENT', renewal must be rejected outright with an error that both our internal billing scripts and an external payment partner's integration can reliably detect and act on — they need to distinguish this specific rejection reason from any other possible failure. Also provide a way to check whether a given member's renewal is due soon, since this needs to power a notification system that queries many members' data at once."*
 
 ### Sample tables
 ```sql
@@ -423,6 +434,8 @@ FALSE
 
 ## Scenario 6 — Duplicate Prevention on Bulk Import
 
+*"We're bulk-importing a list of new supplier records, supplier codes 'SUP-101' through 'SUP-120' (assume `suppliers(supplier_code, supplier_name)`, with `supplier_code` unique). For each code in that range: attempt to insert a placeholder supplier record. Some of these codes may already exist from a previous partial import attempt — these should be logged as 'already exists' and skipped, not treated as a fatal problem, since re-running this import safely is an expected, normal operation."*
+
 ### Sample table
 ```sql
 CREATE TABLE suppliers (
@@ -476,6 +489,8 @@ Re-running the whole block a second time is safe: every code now hits `DUP_VAL_O
 ---
 
 ## Scenario 7 — Tiered API Rate Limit Checker
+
+*"Build a reusable check: given a customer account ID, determine their API rate limit tier and how many requests they have remaining this hour. The rate-limit-tier-to-request-cap mapping (Bronze: 100/hr, Silver: 500/hr, Gold: unlimited) is a fixed, rarely-changing lookup, but this check will be called an enormous number of times per second across our infrastructure — performance here matters enormously. Also, if the account ID doesn't exist, that must be communicated clearly and distinctly to the calling API gateway, which needs to return a proper structured error to the end client rather than crash silently."*
 
 ### Sample table
 ```sql
@@ -554,6 +569,11 @@ ORA-20002: ACCOUNT_NOT_FOUND: 9999
 ---
 
 ## Scenario 8 — End-of-Month Financial Close
+
+*"At month end, we process closing entries for cost centers 1 through 40 (assume `cost_centers(center_id, budget, actual_spend, status)`). For each cost center still 'OPEN': if actual spend exceeds budget by more than 15%, flag it 'OVER_BUDGET_SEVERE' and route to Finance Director review; if it exceeds budget by any amount up to 15%, flag it 'OVER_BUDGET_MINOR' for standard manager review; if under or at budget, mark it 'CLOSED_CLEAN'. Cost centers with a NULL budget (not yet set up properly this cycle) must be flagged as 'BUDGET_NOT_SET' — a distinctly different, non-financial problem from actually overspending. If a cost center ID doesn't exist at all, log it and continue — this must never halt the month-end close process, which finance considers a business-critical, must-complete-every-time operation. Whatever internal calculation determines the over-budget percentage should not be exposed for other systems to call directly, since it's tightly coupled to this specific close process's internal logic."*
+ 
+**For this one specifically**, also answer: what would you tell a code reviewer about why you separated (or didn't separate) the pieces of this into different objects, and what's your single biggest design risk if this requirement changes next quarter?
+
 
 ### Sample table
 ```sql

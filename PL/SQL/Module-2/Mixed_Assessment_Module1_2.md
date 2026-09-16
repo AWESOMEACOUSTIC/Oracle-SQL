@@ -6,6 +6,8 @@ Same format as the previous two answer keys. One thing worth flagging up front: 
 
 ## A1 — Diagnostic Script Using `%ROWTYPE`
 
+> **Question:** A retail company needs a diagnostic script that fetches one product's complete row (assume `products(product_id, product_name, price, stock_qty)`) for `product_id = 305`, and prints a line like: `"Wireless Mouse | Price: 899.5 | In Stock: 42"`. Use the most maintainable approach for capturing the row, so the script keeps working automatically even if a column is added to the table later.
+
 ### Sample table
 ```sql
 CREATE TABLE products (
@@ -42,6 +44,8 @@ Wireless Mouse | Price: 899.5 | In Stock: 42
 ---
 
 ## A2 — Loyalty Tier Classification With Explicit NULL Handling
+
+> **Question:** Design a block that classifies a customer's `loyalty_points` balance into a tier for display on their account page: `0` points is `'NEW MEMBER'`, `1–499` is `'BRONZE'`, `500–1999` is `'SILVER'`, `2000` and above is `'GOLD'`. The balance is stored as a `NUMBER` and could, in rare data-quality cases, be `NULL` for accounts migrated from an old system — this must be handled as its own distinct, clearly-labeled case, not silently grouped with `'NEW MEMBER'`.
 
 ### Sample table
 ```sql
@@ -97,6 +101,8 @@ Customer 6: DATA MISSING
 ---
 
 ## A3 — Invoice Batch (4001–4015)
+
+> **Question:** Write a script that processes a fixed batch of invoice IDs, 4001 through 4015 (assume `invoices(invoice_id, amount, due_date, paid_flag)`). For each invoice still unpaid (`paid_flag = 'N'`): if it's more than 30 days past its due date, print an "OVERDUE - ESCALATE" message; otherwise print a normal "PENDING" message. If a particular invoice ID doesn't exist in the table, this individual problem must not stop the rest of the batch from being processed.
 
 ### Sample table
 ```sql
@@ -171,6 +177,8 @@ Invoice 4015: NOT FOUND - skipping.
 
 ## B1 — Predict: NULL in a Two-Branch IF, and NULL in Concatenation
 
+> **Question:** Without running it, predict exactly what this prints, line by line:
+
 No table needed — pure variable behavior.
 
 ### The block (as given)
@@ -199,6 +207,8 @@ Total (with bonus):
 ---
 
 ## B2 — Predict: `CASE` With No Matching `WHEN` and No `ELSE`
+
+> **Question:** Predict the output, and explain precisely why, referencing the specific rule involved:
 
 No table needed.
 
@@ -229,6 +239,8 @@ ORA-06592: CASE not found while executing CASE statement
 
 ## B3 — Predict: `WHILE` Loop That Never Runs
 
+> **Question:** Predict how many times the loop body executes, and what (if anything) gets printed:
+
 No table needed.
 
 ### The block (as given)
@@ -255,6 +267,8 @@ A `WHILE` loop tests its condition **before** the first iteration. `0 > 0` is `F
 ---
 
 ## B4 — Predict: Nested Block Re-declared Inside a `FOR` Loop
+
+> **Question:** Predict the output of this nested-block scenario, and explain what happens to `v_inner` across iterations:
 
 No table needed.
 
@@ -284,6 +298,8 @@ Because `v_inner` is declared **inside** the loop body, it's a brand-new variabl
 ---
 
 ## C1 — Debug: Invalid Keyword `ELSEIF`
+
+> **Question:** This block is meant to print `'Weekend'` for day numbers 6 and 7, and the day name otherwise, but it doesn't compile. Fix it.
 
 ### The block (as given) and why it fails
 ```sql
@@ -338,6 +354,8 @@ Weekend
 
 ## C2 — Debug: Simple `CASE` Missing `ELSE`
 
+> **Question:** This function is supposed to classify a batch size, but occasionally raises a runtime error your team can't explain from the logic alone. Identify the bug and fix it.
+
 ### The function (as given) and test
 ```sql
 -- AS GIVEN (buggy)
@@ -391,6 +409,8 @@ INVALID
 
 ## C3 — Debug: `REVERSE` Doesn't Swap the Bounds
 
+> **Question:** A developer wanted a loop that counts down from 10 to 1, but it never prints anything. Identify the bug and fix it.
+
 ### The block (as given) and why nothing prints
 ```sql
 -- AS GIVEN (compiles, but prints nothing)
@@ -433,6 +453,8 @@ END;
 ---
 
 ## C4 — Debug: `%TYPE` Needs a Column, Not a Table
+
+> **Question:** This block is meant to declare a variable that always matches the `employees.salary` column's exact datatype, but it doesn't compile as written. Identify and fix the issue.
 
 ### Sample table (for context)
 ```sql
@@ -478,9 +500,32 @@ END;
 
 D1–D4 are prose/reasoning questions with no query or table to run — nothing here to seed or execute. Happy to review your written answers to these directly when you share them.
 
+### D1
+> **Question:** Explain, in your own words, why `IF v_x = NULL THEN` will never behave the way a beginner might expect, and what the correct alternative is. Then explain why the exact same underlying rule also affects how a `CASE` statement handles a `NULL` selector value.
+
+### D2
+> **Question:** A teammate says: *"I always use a basic `LOOP` for everything, even simple counted iterations, because it's the most flexible loop form — I can make it do anything."* Respond in 4–5 sentences: what's true about their claim, and what real risk are they introducing by defaulting to this instead of `FOR` when the iteration count is actually known in advance?
+
+### D3
+> **Question:** Explain the practical difference between declaring `v_total NUMBER(8,2);` versus `v_total orders.total_amount%TYPE;` for a variable meant to hold a value pulled from that column. Under what future circumstance would the difference actually matter in production?
+
+### D4
+> **Question:** A nested block inside a `FOR` loop declares and initializes a local variable on every iteration. A colleague asks: *"Doesn't that waste time re-declaring the same variable over and over? Shouldn't we declare it once outside the loop instead?"* Explain what would actually change in behavior (not just performance) if that variable were moved to the outer, enclosing block instead of staying inside the loop body — is it really just a performance question?
+
 ---
 
 ## E1 — Prepaid Top-Up Batch (Telecom)
+
+> **Question:** A telecom company has this requirement:
+>
+> "Every night, we process a batch of prepaid account top-ups, account IDs 7000 through 7025 (assume `prepaid_accounts(account_id, balance, plan_type, last_topup_date)`). For each account: determine the top-up bonus percentage based on `plan_type` — 'PREMIUM' gets 20%, 'STANDARD' gets 10%, 'BASIC' gets 5%, and any plan type we don't recognize should be clearly flagged rather than silently given zero bonus. Apply the bonus to whatever top-up amount is provided (assume a fixed test amount of 100 for every account in this batch, for simplicity). If an account's `plan_type` is missing entirely (NULL), this is a distinct, separately-flagged situation from an unrecognized plan type — one means bad/incomplete data, the other means a genuinely new plan code we haven't accounted for yet. If a specific account ID doesn't exist in the table at all, log it and continue to the next account without halting the batch. After processing, update each account's balance with the bonus-adjusted top-up amount."
+>
+> **Your task:**
+> 1. Identify every distinct concept from Modules 1 and 2 relevant here, and explain *where* in the requirement each applies (don't just list module topics — tie each one to specific wording).
+> 2. Decide `IF`/`ELSIF` vs. `CASE` for the plan-type-to-bonus mapping, and justify your choice given the "unrecognized plan type" and "missing plan type" requirements specifically.
+> 3. Design the datatype choices you'd use for key variables, including whether `%TYPE`/`%ROWTYPE` applies anywhere.
+> 4. Write the full solution.
+> 5. In a short paragraph, explain how your design ensures one bad account doesn't stop the whole batch, and how it distinguishes the two different "something's wrong with this account's plan data" cases from each other.
 
 ### Sample table
 ```sql
