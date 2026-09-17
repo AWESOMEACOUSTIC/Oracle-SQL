@@ -15,6 +15,49 @@ Some of these are also written the way real requirements actually arrive — a l
 
 **Assumed schema:** `warehouses(warehouse_id, warehouse_name)`, `stock_adjustments(adjustment_id, warehouse_id, item_id, quantity_change, status)`, `inventory(item_id, warehouse_id, quantity_on_hand)`.
 
+<details>
+<summary><b>Click to expand setup script (DDL & Sample Data)</b></summary>
+
+```sql
+-- Tables
+CREATE TABLE warehouses (
+    warehouse_id NUMBER PRIMARY KEY,
+    warehouse_name VARCHAR2(100)
+);
+
+CREATE TABLE inventory (
+    item_id NUMBER,
+    warehouse_id NUMBER,
+    quantity_on_hand NUMBER,
+    PRIMARY KEY (item_id, warehouse_id),
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(warehouse_id)
+);
+
+CREATE TABLE stock_adjustments (
+    adjustment_id NUMBER PRIMARY KEY,
+    warehouse_id NUMBER,
+    item_id NUMBER,
+    quantity_change NUMBER,
+    status VARCHAR2(20),
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(warehouse_id),
+    FOREIGN KEY (item_id, warehouse_id) REFERENCES inventory(item_id, warehouse_id)
+);
+
+-- Sample Data
+INSERT INTO warehouses VALUES (1, 'North Region');
+INSERT INTO warehouses VALUES (2, 'South Region');
+
+INSERT INTO inventory VALUES (101, 1, 50);
+INSERT INTO inventory VALUES (102, 1, 10);
+INSERT INTO inventory VALUES (101, 2, 100);
+
+INSERT INTO stock_adjustments VALUES (1001, 1, 101, -5, 'PENDING');
+INSERT INTO stock_adjustments VALUES (1002, 1, 102, -15, 'PENDING'); -- Should reject (-15 + 10 < 0)
+INSERT INTO stock_adjustments VALUES (1003, 2, 101, 20, 'PENDING');
+COMMIT;
+```
+</details>
+
 ### Requirement Analysis
 For every warehouse, iterate its pending adjustments, validate against current inventory, and update both the adjustment's status and the inventory quantity — while guaranteeing safety against overlapping concurrent workers.
 
@@ -109,6 +152,57 @@ One might consider also locking the `inventory` row with its own `FOR UPDATE` cu
 *"Run a nightly batch across all active customers to evaluate their trailing-12-month spend and update their loyalty tier (BRONZE / SILVER / GOLD) according to spend thresholds (GOLD: 150,000+, SILVER: 50,000+, else BRONZE). Because customer service reps might have a customer record open for editing at the exact moment the batch runs, the batch must not wait on or interfere with them — any customer currently locked by another session should simply be left for the next run. After the batch completes, log how many customers were upgraded, downgraded, or unchanged, and provide a way for the operations dashboard to pull the most recent run's summary at any time afterward."*
 
 **Assumed schema:** `customers(customer_id, tier, status, last_tier_check)`, `orders(order_id, customer_id, order_date, amount)`, `tier_batch_log(run_id, run_date, upgraded_count, downgraded_count, unchanged_count)` with a `tier_batch_log_seq` sequence.
+
+<details>
+<summary><b>Click to expand setup script (DDL & Sample Data)</b></summary>
+
+```sql
+-- Tables & Sequence
+CREATE TABLE customers (
+    customer_id NUMBER PRIMARY KEY,
+    tier VARCHAR2(20),
+    status VARCHAR2(20),
+    last_tier_check DATE,
+    -- Columns added for Case Study 6 compatibility
+    email VARCHAR2(100),
+    created_date DATE
+);
+
+CREATE TABLE orders (
+    order_id NUMBER PRIMARY KEY,
+    customer_id NUMBER,
+    order_date DATE,
+    amount NUMBER,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+);
+
+CREATE TABLE tier_batch_log (
+    run_id NUMBER PRIMARY KEY,
+    run_date DATE,
+    upgraded_count NUMBER,
+    downgraded_count NUMBER,
+    unchanged_count NUMBER
+);
+
+CREATE SEQUENCE tier_batch_log_seq START WITH 1 INCREMENT BY 1;
+
+-- Sample Data
+INSERT INTO customers (customer_id, tier, status, last_tier_check) VALUES (1, 'BRONZE', 'ACTIVE', SYSDATE-365);
+INSERT INTO customers (customer_id, tier, status, last_tier_check) VALUES (2, 'GOLD', 'ACTIVE', SYSDATE-365);
+INSERT INTO customers (customer_id, tier, status, last_tier_check) VALUES (3, 'SILVER', 'ACTIVE', SYSDATE-365);
+INSERT INTO customers (customer_id, tier, status, last_tier_check) VALUES (4, 'BRONZE', 'INACTIVE', SYSDATE-365);
+
+-- Customer 1: 60k spend -> upgrades to SILVER
+INSERT INTO orders VALUES (101, 1, SYSDATE-10, 60000);
+
+-- Customer 2: 10k spend -> downgrades to BRONZE
+INSERT INTO orders VALUES (102, 2, SYSDATE-10, 10000);
+
+-- Customer 3: 160k spend -> upgrades to GOLD
+INSERT INTO orders VALUES (103, 3, SYSDATE-10, 160000);
+COMMIT;
+```
+</details>
 
 ### Requirement Analysis
 Evaluate and update every active customer's tier, tracking outcome counts, then make that summary retrievable **later**, on demand, by a separate dashboard request.
@@ -216,6 +310,28 @@ For a system with very frequent dashboard polling, `tier_batch_log` could instea
 
 **Assumed schema:** `payroll_records(payroll_id, branch_id, pay_period, employee_id, amount)`.
 
+<details>
+<summary><b>Click to expand setup script (DDL & Sample Data)</b></summary>
+
+```sql
+-- Tables
+CREATE TABLE payroll_records (
+    payroll_id NUMBER PRIMARY KEY,
+    branch_id NUMBER,
+    pay_period VARCHAR2(20),
+    employee_id NUMBER,
+    amount NUMBER
+);
+
+-- Sample Data
+INSERT INTO payroll_records VALUES (1, 10, '2023-Q1', 1001, 5000);
+INSERT INTO payroll_records VALUES (2, 10, '2023-Q2', 1001, 5200);
+INSERT INTO payroll_records VALUES (3, 20, '2023-Q1', 1002, 6000);
+INSERT INTO payroll_records VALUES (4, 30, '2023-Q1', 1003, 4500);
+COMMIT;
+```
+</details>
+
 ### Requirement Analysis
 Return a filterable result set to an external web client, with two independent optional filters, and graceful (not erroring) behavior for an invalid branch ID.
 
@@ -269,6 +385,50 @@ If a third or fourth optional filter were added later and some of those filters 
 *"Every night, the billing system should attempt to renew all subscriptions due within the next 7 days. For each due subscription, check its last 3 billing attempts; if all 3 of the most recent attempts failed, mark the subscription 'SUSPENDED' instead of attempting renewal. Otherwise, simulate a renewal charge and mark it 'RENEWED' or 'PAYMENT_FAILED' accordingly. Because customers can also manually trigger a renewal from the mobile app at the same time this batch runs, the batch should never process a subscription that's currently being renewed by the app — skip it for tonight, it'll be retried tomorrow."*
 
 **Assumed schema:** `subscriptions(subscription_id, customer_id, renewal_date, status)`, `billing_attempts(attempt_id, subscription_id, attempt_date, result)` where `result` is `'SUCCESS'` or `'FAILED'`.
+
+<details>
+<summary><b>Click to expand setup script (DDL & Sample Data)</b></summary>
+
+```sql
+-- Tables
+CREATE TABLE subscriptions (
+    subscription_id NUMBER PRIMARY KEY,
+    customer_id NUMBER,
+    renewal_date DATE,
+    status VARCHAR2(20)
+);
+
+CREATE TABLE billing_attempts (
+    attempt_id NUMBER PRIMARY KEY,
+    subscription_id NUMBER,
+    attempt_date DATE,
+    result VARCHAR2(20),
+    FOREIGN KEY (subscription_id) REFERENCES subscriptions(subscription_id)
+);
+
+-- Sample Data
+-- Sub 1: Due soon, 3 recent failed attempts -> Should suspend
+INSERT INTO subscriptions VALUES (1, 101, SYSDATE + 2, 'ACTIVE');
+INSERT INTO billing_attempts VALUES (101, 1, SYSDATE - 3, 'FAILED');
+INSERT INTO billing_attempts VALUES (102, 1, SYSDATE - 2, 'FAILED');
+INSERT INTO billing_attempts VALUES (103, 1, SYSDATE - 1, 'FAILED');
+
+-- Sub 2: Due soon, only 2 failed attempts -> Proceeds to normal renewal attempt
+INSERT INTO subscriptions VALUES (2, 102, SYSDATE + 5, 'ACTIVE');
+INSERT INTO billing_attempts VALUES (104, 2, SYSDATE - 2, 'FAILED');
+INSERT INTO billing_attempts VALUES (105, 2, SYSDATE - 1, 'FAILED');
+
+-- Sub 3: Not due yet -> Will be skipped
+INSERT INTO subscriptions VALUES (3, 103, SYSDATE + 15, 'ACTIVE');
+
+-- Sub 4: Due soon, mixed history -> Proceeds to normal renewal attempt
+INSERT INTO subscriptions VALUES (4, 104, SYSDATE + 1, 'ACTIVE');
+INSERT INTO billing_attempts VALUES (106, 4, SYSDATE - 3, 'SUCCESS');
+INSERT INTO billing_attempts VALUES (107, 4, SYSDATE - 2, 'FAILED');
+INSERT INTO billing_attempts VALUES (108, 4, SYSDATE - 1, 'FAILED');
+COMMIT;
+```
+</details>
 
 ### Requirement Analysis
 Iterate due subscriptions, inspect each one's recent billing history to decide between suspension and a fresh renewal attempt, while avoiding conflicts with the mobile app's own concurrent renewal attempts.
@@ -358,6 +518,33 @@ The failure-counting logic could instead be expressed as a single aggregate subq
 *"The sales operations team needs two things from the same underlying data: (1) A BI dashboard procedure that lets analysts pull sales transactions filtered by any combination of region, product category, and date range. (2) An automated weekly process that, for each sales region, identifies the top-spending customers (those who spent more than a set threshold in the past week), and needs that list handed off to the notification module in a form it can iterate over to build each region manager's email."*
 
 **Assumed schema:** `sales(sale_id, region, product_category, sale_date, amount, customer_id)`.
+
+<details>
+<summary><b>Click to expand setup script (DDL & Sample Data)</b></summary>
+
+```sql
+-- Tables
+CREATE TABLE sales (
+    sale_id NUMBER PRIMARY KEY,
+    region VARCHAR2(50),
+    product_category VARCHAR2(50),
+    sale_date DATE,
+    amount NUMBER,
+    customer_id NUMBER
+);
+
+-- Sample Data
+-- East Region
+INSERT INTO sales VALUES (1, 'East', 'Electronics', SYSDATE - 2, 12000, 101);
+INSERT INTO sales VALUES (2, 'East', 'Furniture', SYSDATE - 5, 5000, 101); -- Cust 101 total weekly: 17000 (qualifies for > 10000 threshold)
+INSERT INTO sales VALUES (3, 'East', 'Electronics', SYSDATE - 3, 2000, 104); -- Cust 104 total weekly: 2000 (doesn't qualify)
+
+-- West Region
+INSERT INTO sales VALUES (4, 'West', 'Electronics', SYSDATE - 1, 11000, 102); -- Cust 102 total weekly: 11000 (qualifies)
+INSERT INTO sales VALUES (5, 'West', 'Clothing', SYSDATE - 10, 15000, 103); -- Cust 103 total weekly: 0 (outside 7 days window, doesn't qualify)
+COMMIT;
+```
+</details>
 
 ### Requirement Analysis
 Two related but distinct deliverables sharing the same underlying table: a flexible multi-filter feed for an external BI tool, and an internal per-region top-customer list that must cross into a separate module.
@@ -461,6 +648,28 @@ Both dashboard filters and the top-customer aggregation reference PL/SQL variabl
 *"Marketing has found that some customers have duplicate records in the `customers` table, apparently from being entered more than once over the years. They want a cleanup script that finds these duplicates and removes the extra copies, keeping just one record per customer so email campaigns don't go out multiple times to the same person. This needs to be safe to run even if someone is actively viewing or editing a customer record in the admin tool at the same time."*
 
 **Assumed schema:** `customers(customer_id, email, created_date, ...)`.
+
+<details>
+<summary><b>Click to expand setup script (Sample Data)</b></summary>
+
+> **Note:** This case study uses the `customers` table created in Case Study 2. If you haven't run that script, you'll need to create the table first. We'll add some duplicate data here.
+
+```sql
+-- Sample Data (Adds duplicate records for the cleanup scenario)
+-- 'jdoe@example.com' has 3 records. ID 5 is the oldest and should be kept.
+INSERT INTO customers (customer_id, email, created_date, status) VALUES (5, 'jdoe@example.com', SYSDATE - 100, 'ACTIVE');
+INSERT INTO customers (customer_id, email, created_date, status) VALUES (6, 'jdoe@example.com', SYSDATE - 50, 'ACTIVE');
+INSERT INTO customers (customer_id, email, created_date, status) VALUES (7, 'jdoe@example.com', SYSDATE - 10, 'ACTIVE');
+
+-- 'asmith@example.com' has 2 records. ID 8 is the oldest and should be kept.
+INSERT INTO customers (customer_id, email, created_date, status) VALUES (8, 'asmith@example.com', SYSDATE - 200, 'ACTIVE');
+INSERT INTO customers (customer_id, email, created_date, status) VALUES (9, 'asmith@example.com', SYSDATE - 5, 'ACTIVE');
+
+-- 'unique@example.com' has 1 record. It should be skipped by the script.
+INSERT INTO customers (customer_id, email, created_date, status) VALUES (10, 'unique@example.com', SYSDATE - 30, 'ACTIVE');
+COMMIT;
+```
+</details>
 
 ### Requirement Analysis
 This requirement is realistic precisely because it's under-specified in two important ways, and a professional response has to notice and handle that rather than guess silently.
